@@ -70,3 +70,14 @@ El proyecto utiliza un archivo `manage.py` para ejecutar comandos administrativo
 
 - Para entornos de producción, configura usuarios y contraseñas seguros, y limita las conexiones remotas.
 
+## Para correr un servidor de desarrollo con docker:
+
+```
+docker run -d \
+  --name rabbitmq-dev \
+  -p 5672:5672 \
+  -p 15672:15672 \
+  -e RABBITMQ_DEFAULT_USER=guest \
+  -e RABBITMQ_DEFAULT_PASS=guest \
+  rabbitmq:management
+```
