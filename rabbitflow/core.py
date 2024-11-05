@@ -39,93 +39,95 @@ class QueueConfig:
 
 class MessageInfrastructure(ABC):
     """Base class for message infrastructure."""
-    def __init__(self, channel: Channel):
+    def __init__(self, channel: Channel, config):
         self.channel = channel
+        self.config = config
+
         
     def _ensure_channel(self) -> None:
-        if self.channel.is_closed:
+        """Ensure channel is open and create a new one if needed."""
+        try:
+            if self.channel.is_closed:
+                self.channel = self.channel.connection.channel()
+                # Configurar el canal para confirmar publicaciones
+                self.channel.confirm_delivery()
+                logger.info("Created new channel")
+        except Exception as e:
+            logger.warning(f"Error ensuring channel: {str(e)}")
+            # Crear nuevo canal y configurarlo
             self.channel = self.channel.connection.channel()
+            self.channel.confirm_delivery()
+            logger.info("Created new channel after error")
 
 class ExchangePair(MessageInfrastructure):
     """A fanout exchange connected to a topic exchange."""
-    def __init__(self, channel: Channel, config: ExchangePairConfig):
-        super().__init__(channel)
-        self.config = config
-
     def setup(self) -> None:
         """Setup exchanges and binding."""
         try:
-            # Setup exchanges
+            self._ensure_channel()
+            
+            # Setup exchanges sin usar passive=True inicialmente
             for name, type_ in [(self.config.fanout_name, 'fanout'), 
                               (self.config.topic_name, 'topic')]:
                 try:
                     self.channel.exchange_declare(
                         exchange=name,
                         exchange_type=type_,
-                        durable=True,
-                        passive=True
+                        durable=True
                     )
-                    logger.info(f"Exchange {name} already exists")
-                except ChannelClosedByBroker:
+                    logger.info(f"Exchange {name} setup complete")
+                except Exception as e:
+                    logger.warning(f"Error declaring exchange {name}: {str(e)}")
                     self._ensure_channel()
+                    # Reintentar sin passive
                     self.channel.exchange_declare(
                         exchange=name,
                         exchange_type=type_,
                         durable=True
                     )
-                    logger.info(f"Created exchange {name}")
             
             # Setup binding
-            try:
-                self.channel.exchange_bind(
-                    source=self.config.fanout_name,
-                    destination=self.config.topic_name,
-                    routing_key="#"
-                )
-                logger.info(f"Created binding from {self.config.fanout_name} to {self.config.topic_name}")
-            except ChannelClosedByBroker:
-                logger.info(f"Binding already exists")
-                self._ensure_channel()
+            self._ensure_channel()
+            self.channel.exchange_bind(
+                source=self.config.fanout_name,
+                destination=self.config.topic_name,
+                routing_key="#"
+            )
+            logger.info(f"Created binding from {self.config.fanout_name} to {self.config.topic_name}")
                 
         except Exception as e:
             raise Exception(f"Error setting up ExchangePair: {str(e)}")
 
 class QueueBinding(MessageInfrastructure):
     """A queue bound to a topic exchange."""
-    def __init__(self, channel: Channel, config: QueueConfig):
-        super().__init__(channel)
-        self.config = config
-
     def setup(self) -> None:
         """Setup queue and binding."""
         try:
-            # Setup queue
+            self._ensure_channel()
+            
+            # Setup queue sin usar passive=True inicialmente
             try:
                 self.channel.queue_declare(
                     queue=self.config.queue_name,
-                    durable=True,
-                    passive=True
+                    durable=True
                 )
-                logger.info(f"Queue {self.config.queue_name} already exists")
-            except ChannelClosedByBroker:
+                logger.info(f"Queue {self.config.queue_name} setup complete")
+            except Exception as e:
+                logger.warning(f"Error declaring queue: {str(e)}")
                 self._ensure_channel()
                 self.channel.queue_declare(
                     queue=self.config.queue_name,
                     durable=True
                 )
-                logger.info(f"Created queue {self.config.queue_name}")
 
             # Setup binding
-            try:
-                self.channel.queue_bind(
-                    queue=self.config.queue_name,
-                    exchange=self.config.exchange_name,
-                    routing_key=self.config.routing_key
-                )
-                logger.info(f"Created binding from {self.config.exchange_name} to {self.config.queue_name}")
-            except ChannelClosedByBroker:
-                logger.info("Binding already exists")
-                self._ensure_channel()
+            self._ensure_channel()
+            self.channel.queue_bind(
+                queue=self.config.queue_name,
+                exchange=self.config.exchange_name,
+                routing_key=self.config.routing_key
+            )
+            logger.info(f"Created binding from {self.config.exchange_name} to {self.config.queue_name}")
 
         except Exception as e:
             raise Exception(f"Error setting up QueueBinding: {str(e)}")
