@@ -21,6 +21,7 @@ pytest-cov = "^6.0.0"
 
 [tool.poetry.scripts]
 rabbitflow = "rabbitflow.management.commands:main"
+rabiitflow-admin = "rabbitflow.scripts.rabbitflow_admin.py:main"
 
 [build-system]
 requires = ["poetry-core"]
